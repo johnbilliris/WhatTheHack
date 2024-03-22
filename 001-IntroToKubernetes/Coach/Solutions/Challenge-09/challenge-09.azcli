@@ -1,0 +1,77 @@
+# Powershell Script
+az login
+az account set --subscription 2e20e6b8-e24f-4d7a-ad5c-bfdde4b8708f
+
+## Challenge 09 - Helm
+$RG="akshack-RG"  #Change as appropriate
+$LOCATION="EastUS"  # Change as appropriate
+$ACR="akshack"
+$AKS="akshackcluster"
+
+# az aks start --name $AKS --resource-group $RG 
+# az aks stop --name $AKS --resource-group $RG 
+
+kubectl get pods
+
+# Deploy the Language Facts application for this challenge using the yaml files provided in the /Challenge-09 folder 
+# of the Resources.zip package. You will have to install the namespace, deployment, and service yaml in that sequence.
+kubectl apply -f ..\..\..\Student\Resources\Challenge-09\helm-webapp-namespace.yml
+kubectl apply -f ..\..\..\Student\Resources\Challenge-09\helm-webapp-deployment.yml
+kubectl apply -f ..\..\..\Student\Resources\Challenge-09\helm-webapp-services.yml
+kubectl get pods -n whatthehack
+kubectl get svc -n whatthehack
+kubectl get deployments -n whatthehack
+
+# Redeploy the app to use v2 of the image and verify that the update is visible in the web app
+kubectl set image deployment/langfacts langfacts=whatthehackmsft/langfacts:v2 -n whatthehack
+kubectl get pods -n whatthehack
+
+# Repeat these steps with v3 and v4 of the container image.
+kubectl set image deployment/langfacts langfacts=whatthehackmsft/langfacts:v3 -n whatthehack
+kubectl set image deployment/langfacts langfacts=whatthehackmsft/langfacts:v4 -n whatthehack
+
+
+# Creating a Helm Chart from a local package
+# Remove the previously deployed app by deleting the namespace that was created via the yaml file
+kubectl delete namespace whatthehack
+
+# Deploy the helm chart with v1 of the image you just created.
+cd app-languages-helm-chart
+helm uninstall langfacts
+helm install --create-namespace -n whatthehack langfacts .
+kubectl get pods -n whatthehack
+kubectl get svc -n whatthehack
+kubectl get all -n whatthehack
+helm list -A 
+
+# Deploying helm charts from a remote container registry
+# First of all we need to allow admin access and authenticate ourselves with the ACR and 
+az acr update -n $ACR -g $RG --admin-enabled true
+az acr credential show -n $ACR -g $RG
+$USER=(az acr credential show -n $ACR -g $RG --query username -o tsv) 
+echo $USER
+$PWD=(az acr credential show -n $ACR -g $RG -o tsv --query passwords[0].value) 
+
+# add it as a helm repository on our local system
+helm registry login akshack.azurecr.io -u $USER -p $PWD
+az acr helm repo add --name $ACR
+helm repo list
+
+# Now we can package up the app-languages-helm-chart chart and push it to our ACR helm repo
+cd ..
+helm package app-languages-helm-chart
+az acr helm push -n $ACR langfacts-0.1.0.tgz
+helm repo update
+# search for the langfacts chart to make sure it got uploaded
+helm search repo langfacts
+
+# Remove the package locally
+helm uninstall langfacts
+# Uninstall the app and redeploy it using the Helm chart from the ACR repo
+kubectl delete namespace whatthehack
+helm install --create-namespace -n whatthehack --set appData.imageVersion=v2 langfacts-release2 $ACR/langfacts
+# Verify that the app has been deployed successfully
+kubectl get all -n whatthehack
+
+# Delete the resource if required
+# az group delete --name $RG --yes

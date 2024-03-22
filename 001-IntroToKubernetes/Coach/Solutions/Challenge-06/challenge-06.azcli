@@ -1,0 +1,30 @@
+# Powershell Script
+az login
+az account set --subscription 2e20e6b8-e24f-4d7a-ad5c-bfdde4b8708f
+
+## Challenge 06 - Deploy MongoDB to AKS
+$RG="akshack-RG"  #Change as appropriate
+$LOCATION="EastUS"  # Change as appropriate
+$ACR="akshack"
+$AKS="akshackcluster"
+
+# az aks start --name $AKS --resource-group $RG 
+# az aks stop --name $AKS --resource-group $RG 
+
+kubectl get pods
+
+# Scale the nodes for the node pool in the AKS cluster from 3 to 1.
+# az aks nodepool list --resource-group $RG --cluster-name $AKS -o table
+# az aks nodepool scale --resource-group $RG --cluster-name $AKS --name nodepool1 --node-count 3
+
+# Deploy a MongoDB container in a pod for v2 of the FabMedical app.
+kubectl apply -f mongo-db-deployment-stateless-solution.yml
+kubectl apply -f mongo-db-service-solution.yml
+kubectl get pods
+
+# Confirm it is running with
+kubectl exec -it mongodb-65cc945b5f-rgclh -- mongosh "--version"
+
+
+# Delete the resource if required
+# az group delete --name $RG --yes

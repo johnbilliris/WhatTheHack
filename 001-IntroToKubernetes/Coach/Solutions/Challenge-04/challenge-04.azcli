@@ -1,0 +1,31 @@
+# Powershell Script
+az login
+az account set --subscription 2e20e6b8-e24f-4d7a-ad5c-bfdde4b8708f
+
+## Challenge 04 - Your First Deployment
+$RG="akshack-RG"  #Change as appropriate
+$LOCATION="EastUS"  # Change as appropriate
+$ACR="akshack"
+$AKS="akshackcluster"
+
+# az aks start --name $AKS --resource-group $RG 
+# az aks stop --name $AKS --resource-group $RG 
+
+kubectl get pods
+
+kubectl apply -f ./content-api-deploy-solution.yml
+kubectl apply -f content-api-service-solution.yml
+kubectl get svc content-api
+
+kubectl apply -f content-web-deploy-solution.yml
+kubectl apply -f content-web-service-solution.yml
+kubectl get svc content-web
+
+
+kubectl delete deployment content-api
+kubectl delete service content-api
+kubectl delete deployment content-web
+kubectl delete service content-web
+
+# Delete the resource if required
+# az group delete --name $RG --yes

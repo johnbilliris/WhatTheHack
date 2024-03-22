@@ -1,0 +1,51 @@
+# Powershell Script
+az login
+az account set --subscription 2e20e6b8-e24f-4d7a-ad5c-bfdde4b8708f
+
+## Challenge 11 - Operations and Monitoring
+$RG="akshack-RG"  #Change as appropriate
+$LOCATION="EastUS"  # Change as appropriate
+$ACR="akshack"
+$AKS="akshackcluster"
+
+# az aks start --name $AKS --resource-group $RG 
+# az aks stop --name $AKS --resource-group $RG 
+
+kubectl get pods
+
+# Find the logs for your application’s containers, using kubectl
+kubectl logs content-api-v2-59c9f656b8-x49c2
+
+# Using the Kubernetes Dashboard
+az aks browse -n $AKS -g $RG
+
+# Start a bash shell into one of the containers running on a pod and check the list of running processes
+kubectl exec --stdin --tty content-api-v2-59c9f656b8-x49c2 -- ps
+
+# Enable "Azure Monitor for Containers" on the AKS cluster
+# https://learn.microsoft.com/en-us/azure/azure-monitor/containers/kubernetes-monitoring-enable?toc=%2Fazure%2Faks%2Ftoc.json&bc=%2Fazure%2Faks%2Fbreadcrumb%2Ftoc.json&tabs=cli
+
+# Enable Prometheus and Grafana
+$MONITOR="akshackmonitor"
+az monitor account create -n $MONITOR -g $RG
+$MONITOR_ID=(az monitor account show -n $MONITOR -g $RG -o tsv --query id)
+$GRAFANA="akshackgrafana"
+az grafana create --name $GRAFANA --resource-group $RG
+$GRAFANA_ID=(az grafana show --name $GRAFANA --resource-group $RG -o tsv --query id)
+
+az aks update --enable-azure-monitor-metrics -n $AKS -g $RG --azure-monitor-workspace-resource-id $MONITOR_ID --grafana-resource-id $GRAFANA_ID
+# az aks update --disable-azure-monitor-metrics -n $AKS -g $RG
+kubectl get ds ama-metrics-node --namespace=kube-system
+kubectl get pods --all-namespaces
+
+# Enable Container insights
+$WORKSPACE="akshackworkspace"
+az monitor log-analytics workspace create -g $RG -n $WORKSPACE
+$WORKSPACE_ID=(az monitor log-analytics workspace show -g $RG -n $WORKSPACE -o tsv --query id)
+az aks enable-addons -a monitoring -n $AKS -g $RG --workspace-resource-id $WORKSPACE_ID
+
+kubectl get ds ama-logs --namespace=kube-system
+kubectl get pods --all-namespaces -o wide
+
+# Delete the resource if required
+# az group delete --name $RG --yes

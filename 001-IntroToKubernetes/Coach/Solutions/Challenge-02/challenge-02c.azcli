@@ -1,0 +1,36 @@
+# Powershell Script
+az login
+az account set --subscription 2e20e6b8-e24f-4d7a-ad5c-bfdde4b8708f
+
+## Challenge 02 - Path C: The Azure Container Registry
+$RG="akshack-RG"  #Change as appropriate
+$LOCATION="EastUS"  # Change as appropriate
+az group create --name $RG --location $LOCATION
+
+$ACR="akshack"
+az acr create -n $ACR -g $RG --sku Standard
+az acr login --name $ACR
+
+az acr repository list --name $ACR
+az acr repository delete -n $ACR --image wthaks/content-web:latest --yes
+az acr repository delete -n $ACR --image wthaks/content-api:latest --yes
+
+# Push to Docker Hub as external registry
+# See commands reference: https://docs.docker.com/reference/cli/docker/
+docker login 
+docker tag content-web johnbilliris/content-web
+docker tag content-api johnbilliris/content-api
+
+docker push johnbilliris/content-web
+docker push johnbilliris/content-api
+
+# Import to ACT
+az acr import --name $ACR --source docker.io/johnbilliris/content-web:latest --image wthaks/content-web
+az acr import --name $ACR --source docker.io/johnbilliris/content-api:latest --image wthaks/content-api
+
+az acr repository list --name $ACR
+
+# Remove local images 
+docker images
+docker rmi johnbilliris/content-web
+docker rmi johnbilliris/content-api

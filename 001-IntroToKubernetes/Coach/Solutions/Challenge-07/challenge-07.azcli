@@ -1,0 +1,47 @@
+# Powershell Script
+az login
+az account set --subscription 2e20e6b8-e24f-4d7a-ad5c-bfdde4b8708f
+
+## Challenge 07 - Updates and Rollbacks
+$RG="akshack-RG"  #Change as appropriate
+$LOCATION="EastUS"  # Change as appropriate
+$ACR="akshack"
+$AKS="akshackcluster"
+
+# az aks start --name $AKS --resource-group $RG 
+# az aks stop --name $AKS --resource-group $RG 
+
+kubectl get pods
+
+# Scale the nodes for the node pool in the AKS cluster to 2.
+# az aks nodepool list --resource-group $RG --cluster-name $AKS -o table
+az aks nodepool scale --resource-group $RG --cluster-name $AKS --name nodepool1 --node-count 2
+
+# Update the app and load data
+# Check for the existence of “contentdb” database by running the following at the mongodb prompt
+kubectl apply -f ..\..\..\Student\Resources\Challenge-07\content-init-job.yml
+kubectl exec -it mongodb-65cc945b5f-tw88j -- /bin/bash
+mongosh
+show dbs
+
+kubectl get jobs
+kubectl delete job content-init
+
+# Perform a rolling update of content-web on your cluster to the v2 version of content-web
+kubectl set image deployment/content-web content-web=whatthehackmsft/content-web:v2
+kubectl get pods -o wide
+
+# Now we are going to roll back this update
+kubectl rollout undo deployment/content-web
+kubectl get pods -o wide
+
+# Blue-Green Deployment
+kubectl apply -f content-api-deploy-solution.bluegreen.yml
+kubectl apply -f content-web-deploy-solution.bluegreen.yml
+kubectl apply -f content-web-service-solution.yml
+kubectl apply -f content-api-service-solution.yml
+kubectl get pods -o wide
+
+
+# Delete the resource if required
+# az group delete --name $RG --yes

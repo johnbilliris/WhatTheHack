@@ -1,0 +1,65 @@
+# Powershell Script
+az login
+az account set --subscription 2e20e6b8-e24f-4d7a-ad5c-bfdde4b8708f
+
+## Challenge 08 - Storage
+$RG="akshack-RG"  #Change as appropriate
+$LOCATION="EastUS"  # Change as appropriate
+$ACR="akshack"
+$AKS="akshackcluster"
+
+# az aks start --name $AKS --resource-group $RG 
+# az aks stop --name $AKS --resource-group $RG 
+
+kubectl get pods
+
+# Make sure that you are using the latest version of the Fabmedical container images
+# Delete old deployments
+kubectl get deployments
+kubectl delete deployment content-web
+kubectl delete deployment content-api
+
+# Delete the MongoDB pod created in Challenge 6
+kubectl get pods
+kubectl delete pod mongodb-65cc945b5f-tw88j
+kubectl get pods 
+# Navigate to website
+
+# Delete your existing MongoDB deployment
+kubectl delete svc mongodb
+kubectl delete deployment mongodb
+kubectl get pods
+
+# Create two Persistent Volume Claims (PVC) using the new Storage Class, one for data and one for config
+kubectl apply -f mongodb-pvc.yaml
+
+# Modify your MongoDB deployment to use the PVCs
+# Deploy MongoDB
+kubectl apply -f mongodb-deployment.yaml
+
+# Verify that persistent storage works
+kubectl get pods
+kubectl exec mongo-db-deploy-64b5bb4546-99q6d -- df -Th
+kubectl exec mongo-db-deploy-64b5bb4546-99q6d -- mongosh --version
+
+# Re-load the sample content (Speakers & Sessions data) in to MongoDB
+kubectl delete job content-init
+kubectl apply -f ..\..\..\Student\Resources\Challenge-07\content-init-job.yml
+kubectl exec -it mongo-db-deploy-64b5bb4546-99q6d -- /bin/bash
+mongosh
+show dbs
+
+# Destroy the MongoDB pod to prove that the data persisting to the disk
+kubectl get pods
+kubectl delete pod mongo-db-deploy-64b5bb4546-99q6d
+kubectl get pods
+# Once mongodb pod is up and running
+kubectl exec -it mongo-db-deploy-64b5bb4546-hm7vh -- /bin/bash
+mongosh
+show dbs
+
+# Navigate to website and verify speakers and Sessions
+
+
+# Delete the resource if required
+# az group delete --name $RG --yes

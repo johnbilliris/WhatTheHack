@@ -1,0 +1,62 @@
+# Powershell Script
+az login
+az account set --subscription 2e20e6b8-e24f-4d7a-ad5c-bfdde4b8708f
+
+## Challenge 01 - Path A: Got Containers?
+
+$RG="akshack-RG"  #Change as appropriate
+$LOCATION="EastUS"  # Change as appropriate
+az group create --name $RG --location $LOCATION
+az deployment group create --name buildvmdeployment -g $RG `
+	-f ../../../Student/Resources/Challenge-01/build-machine/docker-build-machine-vm.json `
+	-p ../../../Student/Resources/Challenge-01/build-machine/docker-build-machine-vm.parameters.json
+
+$PIP=(az network public-ip show --resource-group $RG --name wth-PIP --query ipAddress)
+echo $PIP
+ssh -p 2266 wthadmin@52.168.30.186
+
+
+## Build & Run the FabMedical Application
+# Get Content-Api working
+cd ../../../Student/Resources/Challenge-01/content-api
+# cd ../content-api
+npm install
+node ./server.js &
+
+# open browser for http://localhost:3001/speakers 
+
+# Get Content-Web working
+#cd ../../../Student/Resources/Challenge-01/content-web
+cd ../content-web
+npm install
+$env:CONTENT_API_URL='http://localhost:3001'
+node ./server.js &
+# open browser for http://localhost:3000/ 
+
+
+## Create Dockerfiles to Containerize the FabMedical Application
+# Use coaches solution files
+# Coach/Solutions/Challenge-01/content-api/Dockerfile-solution
+# Coach/Solutions/Challenge-01/content-web/Dockerfile-solution
+
+## Run the Containerized FabMedical Application with Docker
+# Build Content-Api
+#cd ../../../Student/Resources/Challenge-01/content-api
+cd ../content-api
+
+cp ../../../../Coach/Solutions/Challenge-01/content-api/Dockerfile-solution ./Dockerfile
+docker build -t content-api .
+
+# Build Content-Web
+cd ../content-web
+cp ../../../../Coach/Solutions/Challenge-01/content-web/Dockerfile-solution ./Dockerfile
+docker build -t content-web .
+
+# Run the applications in the Docker containers in a network and verify access
+docker network create fabmedical
+docker run -d -p 3001:3001 --name api --net fabmedical content-api
+docker run -d -p 3000:3000 --name web --net fabmedical content-web
+
+
+docker ps
+docker image list

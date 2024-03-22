@@ -1,0 +1,47 @@
+# Powershell Script
+az login
+az account set --subscription 2e20e6b8-e24f-4d7a-ad5c-bfdde4b8708f
+
+## Challenge 05 - Scaling and High Availability
+$RG="akshack-RG"  #Change as appropriate
+$LOCATION="EastUS"  # Change as appropriate
+$ACR="akshack"
+$AKS="akshackcluster"
+
+# az aks start --name $AKS --resource-group $RG 
+# az aks stop --name $AKS --resource-group $RG 
+
+kubectl get pods
+
+# Scale the nodes for the node pool in the AKS cluster from 3 to 1.
+az aks nodepool list --resource-group $RG --cluster-name $AKS -o table
+az aks nodepool scale --resource-group $RG --cluster-name $AKS --name nodepool1 --node-count 1
+az aks nodepool scale --resource-group $RG --cluster-name $AKS --name nodepool1 --node-count 3
+az aks nodepool list --resource-group $RG --cluster-name $AKS -o table
+kubectl get pods
+
+# Next, scale the Web app to 2 instances
+kubectl apply -f content-web-deploy-solution.yml
+kubectl get pods
+
+# Now, scale the API app to 4 instances using the same technique.
+kubectl apply -f content-api-deploy-solution.yml
+kubectl get pods
+
+# Watch events using kubectl with its special watch option.
+kubectl get events --sort-by=.metadata.creationTimestamp
+kubectl get events --sort-by='{.lastTimestamp}' --watch
+
+# we want you to adjust the resources used by your deployments
+kubectl apply -f content-web-deploy-solution-fixed.yml
+kubectl apply -f content-api-deploy-solution-fixed.yml
+kubectl get pods
+
+# Navigate to http://4.156.30.152:3000/stats.html
+
+# Scale the API app back down to 1, and immediately keep refreshing the /stats.html page.
+kubectl apply -f content-api-deploy-solution.yml
+kubectl get pods
+
+# Delete the resource if required
+# az group delete --name $RG --yes

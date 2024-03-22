@@ -1,0 +1,55 @@
+# Powershell Script
+az login
+az account set --subscription 2e20e6b8-e24f-4d7a-ad5c-bfdde4b8708f
+
+## Challenge 10 - Networking and Ingress
+$RG="akshack-RG"  #Change as appropriate
+$LOCATION="EastUS"  # Change as appropriate
+$ACR="akshack"
+$AKS="akshackcluster"
+
+# az aks start --name $AKS --resource-group $RG 
+# az aks stop --name $AKS --resource-group $RG 
+
+kubectl get pods
+helm repo list
+helm list
+
+## Part 1: DNS for Public IPs
+# Your first task is to add a dns label to your content-web service.
+kubectl apply -f content-web-service-solution.yml
+kubectl get svc content-web
+
+http://akshack.eastus.cloudapp.azure.com:3000/
+
+
+## Part 2a: Ingress Controller
+# Delete the existing content-web service.
+kubectl delete svc content-web
+
+# Create an nginx ingress controller. (Hint: use helm)
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+
+kubectl delete ns ingress-basic
+helm install ingress-nginx ingress-nginx/ingress-nginx `
+  --namespace ingress-basic `
+  --create-namespace `
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz `
+  --set controller.service.externalTrafficPolicy=Local
+
+kubectl get services --namespace ingress-basic -o wide ingress-nginx-controller
+
+kubectl apply -f content-web-nginx-part2a.yml
+
+
+## Part 2b: Ingress Controller + DNS for Public IPs
+helm upgrade ingress-nginx ingress-nginx/ingress-nginx `
+  --namespace ingress-basic `
+  --reuse-values `
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-dns-label-name"="akshack"
+
+kubectl apply -f content-web-nginx-part2b.yml
+
+# Delete the resource if required
+# az group delete --name $RG --yes

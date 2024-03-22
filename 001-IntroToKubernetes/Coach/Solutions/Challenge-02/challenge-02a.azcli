@@ -1,0 +1,23 @@
+# Powershell Script
+az login
+az account set --subscription 2e20e6b8-e24f-4d7a-ad5c-bfdde4b8708f
+
+## Challenge 02 - Path A: The Azure Container Registry
+
+$RG="akshack-RG"  #Change as appropriate
+$LOCATION="EastUS"  # Change as appropriate
+az group create --name $RG --location $LOCATION
+
+$ACR="akshack"
+az acr create -n $ACR -g $RG --sku Standard
+az acr login --name $ACR
+
+az acr repository list --name $ACR
+
+docker tag content-web akshack.azurecr.io/wthaks/content-web
+docker tag content-api akshack.azurecr.io/wthaks/content-api
+
+docker push akshack.azurecr.io/wthaks/content-web
+docker push akshack.azurecr.io/wthaks/content-api
+
+az acr repository list --name $ACR

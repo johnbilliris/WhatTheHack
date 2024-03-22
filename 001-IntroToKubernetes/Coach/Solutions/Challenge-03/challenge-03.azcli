@@ -1,0 +1,30 @@
+# Powershell Script
+az login
+az account set --subscription 2e20e6b8-e24f-4d7a-ad5c-bfdde4b8708f
+
+## Challenge 03 - Introduction To Kubernetes
+$RG="akshack-RG"  #Change as appropriate
+$LOCATION="EastUS"  # Change as appropriate
+az group create --name $RG --location $LOCATION
+
+$ACR="akshack"
+$AKS="akshackcluster"
+az aks create --location $LOCATION --name $AKS --node-count 3 --no-ssh-key --resource-group $RG --zones 1 2 3 --enable-managed-identity --attach-acr $ACR
+
+az aks get-credentials --name $AKS --resource-group $RG 
+az aks nodepool list --resource-group $RG --cluster-name $AKS -o table
+
+kubectl get nodes
+kubectl get nodes -o custom-columns=NAME:.metadata.name,REGION:.metadata.labels.topology\.kubernetes\.io/region,ZONE:metadata.labels.topology\.kubernetes\.io/zone
+
+az aks 
+az aks browse --name $AKS --resource-group $RG
+
+az aks show --name $AKS --resource-group $RG
+# look for networkProfile.networkPlugin
+
+az aks start --name $AKS --resource-group $RG 
+az aks stop --name $AKS --resource-group $RG 
+
+# Delete the resource if required
+# az group delete --name $RG --yes

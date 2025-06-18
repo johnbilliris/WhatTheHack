@@ -1,0 +1,408 @@
+az login --tenant b5e5570f-671d-4290-9a28-52c53214f03d
+az account set --subscription "c8703ebc-bc5d-488d-9489-5883c9fde6c2"
+
+
+
+###############################################################################
+
+# Challenge 1 - Setup
+# 5. Running kubectl get nodes shows your AKS System and User pools
+RG_NAME=aks-wth-rg
+AKS_NAME=aks-wth
+NODEPOOL_NAME=userpool
+LOCATION=australiaeast
+ACR_NAME=akswthacr
+
+
+# create resource group
+az group create -n $RG_NAME --location $LOCATION
+az group delete -n $RG_NAME --yes
+
+az acr create -n $ACR_NAME -g $RG_NAME --sku basic
+ACR=$(az acr show -n $ACR_NAME -o tsv --query id)
+
+# create AKS cluster
+az aks create -n $AKS_NAME -g $RG_NAME \
+    --node-count 1 \
+    --enable-cluster-autoscaler \
+    --min-count 1 --max-count 5 \
+    --enable-managed-identity \
+    --attach-acr $ACR_NAME \
+    --enable-azure-monitor-app-monitoring \
+    --enable-cluster-autoscaler
+
+
+# add new nodepool
+az aks nodepool add --cluster-name $AKS_NAME -g $RG_NAME \
+    -n $NODEPOOL_NAME \
+    --enable-cluster-autoscaler \
+    --min-count 1 --max-count 5
+
+
+az aks stop --name $AKS_NAME --resource-group $RG_NAME
+az aks start --name $AKS_NAME --resource-group $RG_NAME
+
+# authenticate to AKS cluster
+az aks get-credentials -g $RG_NAME -n $AKS_NAME
+kubectl config set-context $AKS_NAME
+kubectl get nodes
+
+
+# 6. Running az acr import  -n $ACR_NAME --source docker.io/library/nginx:latest --image nginx:v1 copies an image to your ACR instance
+az acr import  -n $ACR_NAME --source docker.io/library/nginx:latest --image nginx:v1
+az acr repository show -n $ACR_NAME --repository nginx
+
+
+# 7. Running curl -s https://api.github.com/users/octocat/repos | jq '.' shows you a pretty-printed JSON doc
+winget install jqlang.jq
+curl https://api.github.com/users/octocat/repos | jq '.'
+curl https://api.github.com/users/octocat/repos > repos.json
+docker run -i --rm ghcr.io/jqlang/jq < repos.json '.'
+
+
+# 8. [OPTIONAL] Running kubectx lets you switch between K8S clusters
+# 9. [OPTIONAL] Running kubens lets you switch between namespaces
+winget install --id ahmetb.kubectx
+winget install --id ahmetb.kubens
+
+kubectx
+kubens
+
+
+# 10. [OPTIONAL] Running ksysgpo shows all pods in your system namespace
+alias ksysgpo='kubectl --namespace=kube-system get pod'
+ksysgpo
+
+
+
+# Install Cluster Info for Demos
+winget install Helm.Helm
+
+helm repo add scubakiz https://scubakiz.github.io/clusterinfo/
+helm repo update
+helm install clusterinfo scubakiz/clusterinfo
+
+Start-Job -Name clusterinfo -ScriptBlock { kubectl port-forward svc/clusterinfo 5252:5252 -n clusterinfo } 
+
+
+
+###############################################################################
+
+# Challenge 2: Helm
+# 1. Create a new chart
+#    HINT: Use helm template <chart> to render a chart locally and display the output
+helm create myapp
+
+# 2. Deploy the chart on your K8S cluster
+helm install myapp myapp
+helm ls
+
+export POD_NAME=$(kubectl get pods --namespace default -l "app.kubernetes.io/name=myapp,app.kubernetes.io/instance=myapp" -o jsonpath="{.items[0].metadata.name}")   
+export CONTAINER_PORT=$(kubectl get pod --namespace default $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+echo "Visit http://127.0.0.1:8080 to use your application"
+kubectl --namespace default port-forward $POD_NAME 8080:$CONTAINER_PORT
+
+# 3. Override default nginx image with https://hub.docker.com/r/stefanprodan/podinfo
+#    HINT: note that this application runs on port 9898
+#    HINT: You will need to replace the appVersion in the Chart.yaml to match the tag version from Dockerhub
+
+
+# Modify the values.yaml file:
+# image:
+#   repository: stefanprodan/podinfo # change this
+#   pullPolicy: IfNotPresent
+#   # Overrides the image tag whose default is the chart appVersion.
+#   tag: "" # you can specify image tag here or in Chart.yaml
+
+# Add the following to the values.yaml file as line 21
+# containerPort: 9898 # add this
+
+# Modify the Chart.yaml file:
+# appVersion: 6.8.0 # change this
+
+# Modify the deployment.yaml file:
+#     containers:
+#     - name: {{ .Chart.Name }}
+#        securityContext:
+#         {{- toYaml .Values.securityContext | nindent 12 }}
+#         image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+#         imagePullPolicy: {{ .Values.image.pullPolicy }}
+#         ports:
+#         - name: http
+#             containerPort: {{ .Values.containerPort }} # change this
+#             protocol: TCP
+
+helm upgrade myapp myapp
+
+# 4. Install NGINX Ingress Controller using Helm
+#    HINT: This will be a separate chart and release than the one you created
+#    HINT: Make sure to add an initial repo
+
+kubectl create namespace ingress-basic
+kubectl delete ns ingress-basic
+
+# Add the ingress-nginx repository
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+
+# Use Helm to deploy an NGINX ingress controller
+helm install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-basic \
+  --set controller.service.externalTrafficPolicy=Local
+
+helm repo list
+helm ls --all-namespaces
+
+
+# 5. Update your created chart to add the Ingress route
+#    HINT: This updates the original chart you created
+#    HINT: You only need to modify the values.yaml file
+#    HINT: The default annotations need to be commented back in
+#    HINT: Use nip.io for DNS resolution
+
+# Get the ingress ip:
+
+# With jq
+INGRESS_IP=$(kubectl get service -n ingress-basic ingress-nginx-controller -o json | jq '.status.loadBalancer.ingress[0].ip' -r)
+
+# Without jq
+kubectl get service -n ingress-basic nginx-ingress-ingress-nginx-controller -o json > 2-5.json
+INGRESS_IP=$(docker run -i --rm ghcr.io/jqlang/jq < 2-5.json '.status.loadBalancer.ingress[0].ip' -r)
+
+echo $INGRESS_IP
+
+
+# Enable ingress in values.yaml, setting hostname to refer to the ingress ip:
+# ingress:
+#   enabled: true # change this
+#   annotations: {}  # remove {}
+#     kubernetes.io/ingress.class: nginx  # uncomment this
+#     # kubernetes.io/tls-acme: "true"
+#   hosts:
+#     - host: myapp.52.141.219.8.nip.io # change to your ingress ip
+#       paths: "/" # change this
+
+helm upgrade myapp myapp
+kubectl describe ingress myapp
+
+
+# 6. Verify App is available at myapp.$INGRESS_IP.nip.io
+# HINT: INGRESS_IP=$(kubectl get service -n ingress-basic nginx-ingress-ingress-nginx-controller -o json | jq '.status.loadBalancer.ingress[0].ip' -r)
+
+curl myapp.$INGRESS_IP.nip.io
+kubectl exec myapp-689f89596f-dcb5c -i -t -- sh
+
+
+
+###############################################################################
+
+# Challenge 3 - Resiliency
+
+# 1. Ensure you have multiple replicas of podinfo running
+kubectl get pods
+
+# Modify the values.yaml file:
+# Line 6
+# replicaCount: 3
+
+helm upgrade myapp myapp
+kubectl get pods
+
+
+# 2. Update the Liveness Probe for your Helm chart to use /healthz
+
+# Modify the values.yaml file:
+# Line 92
+# path /healthz
+
+
+# 3. Update the Readiness Probe for your Helm chart to use /readyz
+
+# Modify the values.yaml file:
+# Line 96
+# path /readyz
+
+
+helm upgrade myapp myapp
+kubectl get pods
+
+# 4. Force the Readiness Probe to fail for a specific instance
+#    HINT: look through some of the APIs in the repo README
+
+echo $INGRESS_IP
+curl -d '' myapp.$INGRESS_IP.nip.io/readyz/disable
+curl -d '' http://myapp.20.227.73.231.nip.io/readyz/disable
+
+
+kubectl exec myapp-689f89596f-4gmlx -i -t -- sh
+
+
+
+###############################################################################
+
+# Challenge 4 - Scaling
+# 1. Enable the cluster autoscaler on the user nodepool
+
+az aks nodepool update --cluster-name $AKS_NAME -g $RG_NAME \
+  -n $NODEPOOL_NAME \
+  --enable-cluster-autoscaler \
+  --min-count 1 --max-count 10
+
+# az aks update -n $AKS_NAME -g $RG_NAME --update-cluster-autoscaler  --min-count 1 --max-count 10
+
+
+# 2. Create a deployment and service using the container image k8s.gcr.io/hpa-example
+#    Any web request this receives will run a CPU intensive computation (calculates Pi)
+#    HINT: Don't forget about requests/limits
+
+kubectl apply -f 3-2.yaml
+
+# 3. Create the HPA for this deployment
+
+kubectl autoscale deployment/hpa-example --max=10
+
+# 4. Simulate load by sending requests to the service
+#      Use a busybox deployment to continuously send traffic: kubectl create deployment busybox --image=busybox --replicas=10 -- /bin/sh -c "while true; do wget -q -O- hpa-example; done"
+#      Adjust the number of replicas as needed
+
+#kubectl create deployment busybox --image=busybox --replicas=10 -- /bin/sh -c "while true; do wget -q -O- hpa-example; done"
+kubectl apply -f 3-4.yaml
+kubectl top pods
+kubectl get hpa -w
+
+kubectl delete deployment busybox
+kubectl delete deployment hpa-example
+kubectl delete svc hpa-example
+
+
+
+###############################################################################
+
+# Challenge 5 - GitOps
+
+# 1. Install Flux on your Cluster
+#    HINT: Getting Started with Flux
+#    Use the yaml approach, do NOT use the "Getting started with Helm" guide
+#kubectl apply -f https://github.com/fluxcd/flux2/releases/latest/download/install.yaml
+kubectl apply -f flux.yaml
+
+kubectl -n flux-system rollout status deployment/helm-controller
+
+# 2. Fork https://github.com/fluxcd/flux-get-started in your Github Repo
+# 3. Give write access to your Github repo
+
+winget install -e --id FluxCD.Flux
+
+# Create new repo from template repo https://github.com/fluxcd/flux2-kustomize-helm-example
+# https://github.com/johnbilliris/flux2-kustomize-helm-example 
+
+# GitHub repo permissions:
+# Contents : Read and write
+# Metadata : Read-only
+export GITHUB_TOKEN=github_pat_XXXX
+flux bootstrap github \
+  --token-auth \
+  --owner=johnbilliris \
+  --repository=flux2-kustomize-helm-example \
+  --branch=main \
+  --path=clusters/staging \
+  --personal
+
+kubectl -n ingress-nginx port-forward svc/ingress-nginx-controller 8080:80 &
+curl -H "Host: podinfo.$INGRESS_IP.nip.io" http://localhost:8080
+curl podinfo.$INGRESS_IP.nip.io:9898
+
+# 4. Make a small change to the deployment
+#    Example: Add --ui-message='Welcome to Flux' to the container command
+#    HINT: You can use fluxctl sync if you're impatient
+
+# Modify apps/base/podinfo/release.yaml and add the following lines at the end of the file
+# ui:
+#      message: 'Welcome to Flux'
+
+# git commit
+
+curl -H "Host: podinfo.staging" http://localhost:8080
+
+
+# 5. Using GitOps, expose the service at podinfo.$INGRESS_IP.nip.io
+# https://github.com/stefanprodan/podinfo/blob/master/charts/podinfo/values.yaml
+
+curl -H "Host: podinfo.$INGRESS_IP.nip.io" http://localhost:8080
+
+curl -H "Host: podinfo.$INGRESS_IP.nip.io" http://podinfo.$INGRESS_IP.nip.io:80
+
+
+###############################################################################
+
+# Challenge 6 - Service Mesh
+
+
+# Istio - https://itnext.io/kubernetes-based-microservice-observability-with-istio-service-mesh-part-1-bed3dd0fac0b
+
+# 1. Install the Service Mesh CLI
+#    e.g. istioctl For Istio, linkerd for Linkerd
+# CLI
+# https://github.com/istio/istio/releases/tag/1.25.0
+# Install into folder, add fodler into PATH, and restart VS Code
+
+
+# 2. Install the Service Mesh on your Kubernetes cluster
+istioctl install
+
+# via Helm
+helm repo add istio https://istio-release.storage.googleapis.com/charts
+helm repo update
+helm install istio-base istio/base -n istio-system --set defaultRevision=default --create-namespace
+helm ls -n istio-system
+
+istioctl uninstall -y --purge
+kubectl delete namespace istio-system
+
+#############   RESUME FROM HERE #############
+
+
+# 3. Enable Mutual TLS
+kubectl apply -f 6-3.yaml
+
+# 4. Apply distributed tracing with Jaeger
+helm repo add jaegertracing https://jaegertracing.github.io/helm-charts
+helm search repo jaegertracing
+
+kubectl apply -f cert-manager.yaml 
+kubectl apply -f opentelemetry-operator.yaml
+kubectl apply -f jaeger-inmemory-instance.yaml
+
+helm install jaegertracing jaegertracing/jaeger-operator 
+helm install jaeger jaegertracing/jaeger
+
+helm uninstall jaeger
+
+
+# You can log into the Jaeger Query UI here:
+# export POD_NAME=$(kubectl get pods --namespace default -l "app.kubernetes.io/instance=jaeger,app.kubernetes.io/component=query" -o jsonpath="{.items[0].metadata.name}")
+# echo http://127.0.0.1:8080/
+# kubectl port-forward --namespace default $POD_NAME 8080:16686
+kubectl port-forward service/jaeger-inmemory-instance-collector 8081:16686
+
+
+
+# HOTROD example
+docker pull registry.k8s.io/kustomize/kustomize:v5.0.0
+docker run --mount type=bind,src=.,dst=/apps/hotrod registry.k8s.io/kustomize/kustomize:v5.0.0 build /apps/hotrod/kubernetes | kubectl apply -f -
+kubectl port-forward -n example-hotrod service/example-hotrod 8081:frontend
+kubectl port-forward -n example-hotrod service/jaeger 16686:frontend &&
+
+# 5. Enable high-level metrics
+# 6. Test the "Fault Injection" feature
+# 7. Use Flagger to automate a canary release
+#    NOTE: make sure to disable mTLS before configuring Flagger
+
+
+
+
+###############################################################################
+
+# Challenge 7 - Data Volumes
+
+
+###############################################################################
